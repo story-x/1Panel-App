@@ -1,0 +1,29 @@
+name: GsCore
+tags:
+    - Bot
+    - 游戏
+title: 早柚核心 - 多平台游戏查询 Bot 框架
+description: 💖一套业务逻辑,多个平台支持!异步核心框架 GsCore,支持原神、星铁、绝区零等多款游戏查询
+additionalProperties:
+    key: gscore
+    name: GsCore
+    tags:
+        - Bot
+        - Game
+    shortDescZh: 早柚核心 - 多平台游戏查询 Bot 框架
+    shortDescEn: GsCore - Multi-platform game query bot framework
+    description:
+        en: Multi-platform game query bot framework supporting Genshin Impact, Star Rail, ZZZ and more
+        ja: 原神、スターレイル、ゼンレスゾーンゼロなどをサポートするマルチプラットフォームゲームクエリボットフレームワーク
+        zh: 💖一套业务逻辑,多个平台支持!异步核心框架 GsCore,支持原神、星铁、绝区零等多款游戏查询
+        zh-Hant: 💖一套業務邏輯,多個平台支持!異步核心框架 GsCore,支持原神、星鐵、絕區零等多款遊戲查詢
+    type: tool
+    crossVersionUpdate: true
+    limit: 0
+    recommend: 0
+    website: https://docs.sayu-bot.com
+    github: https://github.com/Genshin-bots/gsuid_core
+    document: https://docs.sayu-bot.com
+    architectures:
+      - amd64
+      - arm64

@@ -1,0 +1,27 @@
+networks:
+    1panel-network:
+        external: true
+
+services:
+    gsuid-core:
+        image: strycn/gsuid-core:latest
+        container_name: ${CONTAINER_NAME}
+        restart: always
+        ports:
+            - ${PANEL_APP_PORT_HTTP}:8765
+        networks:
+            - 1panel-network
+        volumes:
+            # 挂载应用代码和数据目录
+            - ${CODE_DIR}:/app
+            # 挂载时区文件
+            - /etc/localtime:/etc/localtime:ro
+            - /etc/timezone:/etc/timezone:ro
+        environment:
+            - PYTHONUNBUFFERED=1
+            - TZ=${TZ}
+        working_dir: /app
+        # 启动命令
+        command: ${START_COMMAND}
+        labels:
+            createdBy: "Apps"

@@ -1,0 +1,32 @@
+additionalProperties:
+  formFields:
+    - default: '/opt/gsuid_core'
+      edit: true
+      envKey: CODE_DIR
+      labelEn: Code Directory
+      labelZh: 代码目录(宿主机绝对路径)
+      required: true
+      type: text
+    - default: '8765'
+      edit: false
+      envKey: PANEL_APP_PORT_HTTP
+      labelEn: Container Port
+      labelZh: 容器端口
+      required: true
+      type: number
+      rule: paramPort
+    - default: 'Asia/Shanghai'
+      edit: true
+      envKey: TZ
+      labelEn: Timezone
+      labelZh: 时区设置
+      required: true
+      type: text
+    - default: 'bash /app/bot.sh'
+      edit: true
+      envKey: START_COMMAND
+      labelEn: Start Command
+      labelZh: 启动命令
+      required: true
+      type: text
+
