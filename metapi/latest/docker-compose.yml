@@ -1,0 +1,28 @@
+services:
+  metapi:
+    image: 1467078763/metapi:latest
+    pull_policy: always
+    container_name: ${CONTAINER_NAME}
+    restart: always
+    ports:
+      - ${PANEL_APP_PORT_HTTP}:4000
+    networks:
+      - 1panel-network
+    volumes:
+      - ./data:/app/data
+    environment:
+      DB_TYPE: ${PANEL_DB_TYPE}
+      DB_URL: ${PANEL_DB_TYPE}://${PANEL_DB_USER}:${PANEL_DB_USER_PASSWORD}@${PANEL_DB_HOST}:${PANEL_DB_PORT}/${PANEL_DB_NAME}
+      AUTH_TOKEN: ${AUTH_TOKEN}
+      PROXY_TOKEN: ${PROXY_TOKEN}
+      CHECKIN_CRON: ${CHECKIN_CRON}
+      BALANCE_REFRESH_CRON: ${BALANCE_REFRESH_CRON}
+      PORT: 4000
+      DATA_DIR: /app/data
+      TZ: ${TZ}
+    labels:
+      createdBy: "Apps"
+
+networks:
+  1panel-network:
+    external: true

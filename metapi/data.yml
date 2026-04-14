@@ -1,0 +1,25 @@
+name: met api
+tags:
+  - AI / 大模型
+title: Metapi AI 模型聚合网关
+description: 中转站的中转站 — 将分散的 AI 中转站聚合为一个统一网关
+additionalProperties:
+  key: metapi
+  name: Met Api
+  tags:
+    - AI
+  shortDescZh: 将分散的 AI 中转站聚合为一个统一网关，把多个站点统一到一个 API Key、一个入口，自动发现模型、智能路由、成本最优。
+  shortDescEn: Federated AI Model Aggregation Gateway
+  description:
+    en: Federated AI Model Aggregation Gateway
+    zh: 将分散的 AI 中转站聚合为一个统一网关，把多个站点统一到一个 API Key、一个入口，自动发现模型、智能路由、成本最优。
+  type: tool
+  crossVersionUpdate: true
+  limit: 0
+  recommend: 0
+  website: https://metapi.cita777.me
+  github: https://github.com/cita-777/metapi
+  document: https://github.com/cita-777/metapi/blob/main/README.md
+  architectures:
+    - amd64
+    - arm64
