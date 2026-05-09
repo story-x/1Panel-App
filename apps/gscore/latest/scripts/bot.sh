@@ -8,6 +8,9 @@
 
 set -e  # 遇到错误立即退出
 
+# Playwright 固定版本（与镜像预装浏览器对应）
+PLAYWRIGHT_VERSION="${PLAYWRIGHT_VERSION:-1.59.0}"
+
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -136,11 +139,11 @@ install_dependencies() {
             }
             log_info "pyproject.toml 依赖安装完成 ✓"
             
-            # 降级 playwright 到稳定版本，防止浏览器版本不匹配
-            log_info "锁定 playwright 到稳定版本 1.48.0..."
+            # 固定 playwright 版本，避免浏览器 revision 漂移
+            log_info "锁定 playwright 版本: ${PLAYWRIGHT_VERSION}..."
             UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple \
-            uv pip install "playwright==1.48.0" 2>&1 | grep -v "^$" || true
-            
+            uv pip install --no-deps "playwright==${PLAYWRIGHT_VERSION}" 2>&1 | grep -v "^$" || true
+
         else
             log_warn "uv 未安装，使用 pip..."
             pip install -e . || {
@@ -149,15 +152,15 @@ install_dependencies() {
             }
             log_info "pyproject.toml 依赖安装完成 ✓"
         fi
-        
+
     # 检查是否有 requirements.txt
     elif [ -f "requirements.txt" ]; then
         log_info "检测到 requirements.txt，安装项目依赖..."
-        
+
         pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple
-        
+
         log_info "requirements.txt 依赖安装完成 ✓"
-    
+
     else
         log_warn "未检测到 pyproject.toml 或 requirements.txt"
         log_warn "跳过项目依赖安装"
@@ -169,7 +172,7 @@ install_dependencies() {
 #######################################
 check_optional_deps() {
     log_info "检查可选依赖..."
-    
+
     # 检查 opencv
     if python -c "import cv2" &> /dev/null; then
         CV_VERSION=$(python -c "import cv2; print(cv2.__version__)" 2>/dev/null)
@@ -177,7 +180,7 @@ check_optional_deps() {
     else
         log_warn "opencv-python 未安装，图像处理功能可能不可用"
     fi
-    
+
     # 检查 playwright
     if python -c "import playwright" &> /dev/null; then
         PW_VERSION=$(python -m pip show playwright 2>/dev/null | grep "^Version:" | awk '{print $2}' || echo "unknown")
@@ -242,7 +245,7 @@ check_chromium() {
         log_warn "国内镜像未同步最新版本，尝试安装较旧的稳定版本..."
 
         # 回退到已知在镜像上可用的版本
-        FALLBACK_VERSION="1.48.0"
+        FALLBACK_VERSION="$PLAYWRIGHT_VERSION"
         log_info "降级 playwright 到 ${FALLBACK_VERSION}..."
 
         UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple \
