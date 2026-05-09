@@ -201,7 +201,7 @@ check_chromium() {
     
     # 定义浏览器路径
     VENV_ABS_PATH="/app/.venv"
-    BROWSERS_PATH="$VENV_ABS_PATH/ms-playwright"
+    BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-/ms-playwright}"
     
     log_debug "浏览器安装路径: $BROWSERS_PATH"
     
