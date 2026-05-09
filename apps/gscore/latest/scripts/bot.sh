@@ -196,137 +196,97 @@ check_chromium() {
         log_debug "playwright 未安装，跳过浏览器检查"
         return
     fi
-    
+
     log_info "检查 Chromium 浏览器..."
-    
+
     # 定义浏览器路径
-    VENV_ABS_PATH="/app/.venv"
     BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-/ms-playwright}"
-    
+    FORCE_REINSTALL="${FORCE_REINSTALL_CHROMIUM:-0}"
+
     log_debug "浏览器安装路径: $BROWSERS_PATH"
-    
-    # 获取当前 playwright 版本
-    CURRENT_PW_VERSION=$(python -m pip show playwright 2>/dev/null | grep "^Version:" | awk '{print $2}' || echo "unknown")
-    log_debug "当前 playwright 版本: $CURRENT_PW_VERSION"
-    
-    # 检查浏览器是否已安装
-    NEED_INSTALL=false
+
+    # 强制重装时才清理
+    if [ "$FORCE_REINSTALL" = "1" ]; then
+        log_warn "检测到 FORCE_REINSTALL_CHROMIUM=1，执行 Chromium 强制重装"
+        rm -rf "$BROWSERS_PATH"
+    fi
+
+    # 发现已有浏览器则直接复用，不自动删除重装
     if [ -d "$BROWSERS_PATH" ]; then
         CHROMIUM_PATH=$(find "$BROWSERS_PATH" -maxdepth 2 -name "chromium-*" -type d 2>/dev/null | head -n 1)
         if [ -n "$CHROMIUM_PATH" ]; then
-            log_info "发现已安装的 Chromium: $(basename $CHROMIUM_PATH)"
-            
-            # 尝试启动浏览器验证是否可用
-            if PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_PATH" python -c "
-from playwright.sync_api import sync_playwright
-try:
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        browser.close()
-    exit(0)
-except Exception as e:
-    exit(1)
-" &>/dev/null; then
-                log_info "Chromium 浏览器可用 ✓"
-                export PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_PATH"
-                return
-            else
-                log_warn "Chromium 浏览器版本不匹配或损坏，需要重新安装"
-                NEED_INSTALL=true
-                # 删除旧版本浏览器
-                rm -rf "$BROWSERS_PATH"
-            fi
-        else
-            NEED_INSTALL=true
+            log_info "发现已安装的 Chromium: $(basename "$CHROMIUM_PATH")"
+            export PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_PATH"
+            log_info "复用已安装 Chromium（不重新下载）✓"
+            return
         fi
-    else
-        NEED_INSTALL=true
     fi
-    
-    # 需要安装浏览器
-    if [ "$NEED_INSTALL" = true ]; then
-        log_info "正在安装 Chromium 浏览器..."
-        log_info "这可能需要 1-2 分钟，请耐心等待..."
-        
-        # 临时禁用 set -e，防止安装失败导致脚本退出
-        set +e
-        
-        # 尝试使用国内镜像
-        log_info "尝试使用国内镜像下载..."
-        log_debug "使用镜像: https://npmmirror.com/mirrors/playwright/"
-        
+
+    log_info "未发现 Chromium，开始安装..."
+    log_info "这可能需要 1-2 分钟，请耐心等待..."
+
+    # 临时禁用 set -e，防止安装失败导致脚本退出
+    set +e
+
+    # 尝试使用国内镜像
+    log_info "尝试使用国内镜像下载..."
+    log_debug "使用镜像: https://npmmirror.com/mirrors/playwright/"
+
+    CHROMIUM_OUTPUT=$(PLAYWRIGHT_DOWNLOAD_HOST=https://npmmirror.com/mirrors/playwright/ \
+        PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_PATH" \
+        uv run --no-project playwright install chromium 2>&1)
+    CHROMIUM_EXIT_CODE=$?
+
+    # 检查是否是 404 错误（镜像未同步最新版本）
+    if [ $CHROMIUM_EXIT_CODE -ne 0 ] && echo "$CHROMIUM_OUTPUT" | grep -q "404\|NoSuchKey"; then
+        log_warn "国内镜像未同步最新版本，尝试安装较旧的稳定版本..."
+
+        # 回退到已知在镜像上可用的版本
+        FALLBACK_VERSION="1.48.0"
+        log_info "降级 playwright 到 ${FALLBACK_VERSION}..."
+
+        UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple \
+        uv pip install "playwright==${FALLBACK_VERSION}" 2>&1 | grep -v "^$" || true
+
+        # 重新尝试用镜像下载
         CHROMIUM_OUTPUT=$(PLAYWRIGHT_DOWNLOAD_HOST=https://npmmirror.com/mirrors/playwright/ \
             PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_PATH" \
             uv run --no-project playwright install chromium 2>&1)
         CHROMIUM_EXIT_CODE=$?
-        
-        # 检查是否是 404 错误（镜像未同步最新版本）
+
+        # 如果还是失败，再尝试更老的版本
         if [ $CHROMIUM_EXIT_CODE -ne 0 ] && echo "$CHROMIUM_OUTPUT" | grep -q "404\|NoSuchKey"; then
-            log_warn "国内镜像未同步最新版本，尝试安装较旧的稳定版本..."
-            
-            # 回退到已知在镜像上可用的版本
-            FALLBACK_VERSION="1.48.0"
-            log_info "降级 playwright 到 ${FALLBACK_VERSION}..."
-            
+            FALLBACK_VERSION="1.44.0"
+            log_warn "版本 1.48.0 也不可用，尝试 ${FALLBACK_VERSION}..."
+
             UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple \
             uv pip install "playwright==${FALLBACK_VERSION}" 2>&1 | grep -v "^$" || true
-            
-            # 重新尝试用镜像下载
+
             CHROMIUM_OUTPUT=$(PLAYWRIGHT_DOWNLOAD_HOST=https://npmmirror.com/mirrors/playwright/ \
                 PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_PATH" \
                 uv run --no-project playwright install chromium 2>&1)
             CHROMIUM_EXIT_CODE=$?
-            
-            # 如果还是失败，再尝试更老的版本
-            if [ $CHROMIUM_EXIT_CODE -ne 0 ] && echo "$CHROMIUM_OUTPUT" | grep -q "404\|NoSuchKey"; then
-                FALLBACK_VERSION="1.44.0"
-                log_warn "版本 1.48.0 也不可用，尝试 ${FALLBACK_VERSION}..."
-                
-                UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple \
-                uv pip install "playwright==${FALLBACK_VERSION}" 2>&1 | grep -v "^$" || true
-                
-                CHROMIUM_OUTPUT=$(PLAYWRIGHT_DOWNLOAD_HOST=https://npmmirror.com/mirrors/playwright/ \
-                    PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_PATH" \
-                    uv run --no-project playwright install chromium 2>&1)
-                CHROMIUM_EXIT_CODE=$?
-            fi
         fi
-        
-        # 重新启用 set -e
-        set -e
-        
-        # 显示输出（过滤警告信息）
-        echo "$CHROMIUM_OUTPUT" | grep -v "DeprecationWarning" | grep -v "url.parse" | grep -v "^$" | grep -v "NoSuchKey" | grep -v "xml version" | tail -10 || true
-        
-        # 检查 chromium 是否安装成功
-        if [ $CHROMIUM_EXIT_CODE -eq 0 ] || echo "$CHROMIUM_OUTPUT" | grep -q "downloaded to\|is already installed"; then
-            # 获取实际安装的 playwright 版本
-            PW_VERSION=$(python -m pip show playwright 2>/dev/null | grep "^Version:" | awk '{print $2}' || echo "unknown")
-            log_info "Chromium 安装成功 ✓ (playwright ${PW_VERSION})"
-            log_info "浏览器已安装到虚拟环境: $BROWSERS_PATH"
-            
-            # 设置环境变量
-            export PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_PATH"
-            
-            # 锁定 playwright 版本，防止被自动升级
-            if [ "$PW_VERSION" != "unknown" ] && [ "$PW_VERSION" != "$CURRENT_PW_VERSION" ]; then
-                log_info "锁定 playwright 版本为 ${PW_VERSION}，防止自动升级"
-                # 使用 uv pip install --no-deps 防止依赖升级
-                UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple \
-                uv pip install --no-deps "playwright==${PW_VERSION}" &>/dev/null || true
-            fi
-            
-            # 验证可执行文件是否存在
-            CHROMIUM_PATH=$(find "$BROWSERS_PATH" -maxdepth 2 -name "chromium-*" -type d 2>/dev/null | head -n 1)
-            if [ -n "$CHROMIUM_PATH" ]; then
-                log_debug "Chromium 路径: $CHROMIUM_PATH"
-            fi
-        else
-            log_error "Chromium 安装失败！(退出码: $CHROMIUM_EXIT_CODE)"
-            log_warn "playwright 功能可能不可用"
-            log_warn "错误信息: $(echo "$CHROMIUM_OUTPUT" | grep -i "error\|failed" | tail -3)"
-            log_warn "请手动执行: PLAYWRIGHT_BROWSERS_PATH=$BROWSERS_PATH uv run --no-project playwright install chromium"
-        fi
+    fi
+
+    # 重新启用 set -e
+    set -e
+
+    # 显示输出（过滤警告信息）
+    echo "$CHROMIUM_OUTPUT" | grep -v "DeprecationWarning" | grep -v "url.parse" | grep -v "^$" | grep -v "NoSuchKey" | grep -v "xml version" | tail -10 || true
+
+    # 检查 chromium 是否安装成功
+    if [ $CHROMIUM_EXIT_CODE -eq 0 ] || echo "$CHROMIUM_OUTPUT" | grep -q "downloaded to\|is already installed"; then
+        PW_VERSION=$(python -m pip show playwright 2>/dev/null | grep "^Version:" | awk '{print $2}' || echo "unknown")
+        log_info "Chromium 安装成功 ✓ (playwright ${PW_VERSION})"
+        log_info "浏览器安装路径: $BROWSERS_PATH"
+
+        export PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_PATH"
+    else
+        log_error "Chromium 安装失败！(退出码: $CHROMIUM_EXIT_CODE)"
+        log_warn "playwright 功能可能不可用"
+        log_warn "错误信息: $(echo "$CHROMIUM_OUTPUT" | grep -i "error\|failed" | tail -3)"
+        log_warn "请手动执行: PLAYWRIGHT_BROWSERS_PATH=$BROWSERS_PATH uv run --no-project playwright install chromium"
     fi
 }
 
