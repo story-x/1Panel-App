@@ -11,6 +11,11 @@ set -e  # 遇到错误立即退出
 # Playwright 固定版本（与镜像预装浏览器对应）
 PLAYWRIGHT_VERSION="${PLAYWRIGHT_VERSION:-1.59.0}"
 
+# 国内镜像源定义
+export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}"
+export UV_INDEX_URL="${UV_INDEX_URL:-$PIP_INDEX_URL}"
+export PLAYWRIGHT_DOWNLOAD_HOST="${PLAYWRIGHT_DOWNLOAD_HOST:-https://npmmirror.com/mirrors/playwright/}"
+
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -115,55 +120,20 @@ setup_virtualenv() {
 }
 
 #######################################
-# 3. 安装项目依赖
+# 3. 锁定 playwright 依赖
 #######################################
 install_dependencies() {
-    log_info "检查项目依赖..."
+    log_info "检查 playwright 版本..."
     
-    # 检查是否有 pyproject.toml
-    if [ -f "pyproject.toml" ]; then
-        log_info "检测到 pyproject.toml，安装项目依赖..."
-        
-        if command -v uv &> /dev/null; then
-            log_info "使用 uv 安装依赖..."
-            UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple \
-            UV_LINK_MODE=copy \
-            uv sync --no-dev 2>&1 | grep -v "DeprecationWarning" || {
-                log_warn "uv sync 失败，尝试使用 uv pip install..."
-                UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple \
-                UV_LINK_MODE=copy \
-                uv pip install -e . || {
-                    log_error "依赖安装失败"
-                    exit 1
-                }
-            }
-            log_info "pyproject.toml 依赖安装完成 ✓"
-            
-            # 固定 playwright 版本，避免浏览器 revision 漂移
-            log_info "锁定 playwright 版本: ${PLAYWRIGHT_VERSION}..."
-            UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple \
-            uv pip install --no-deps "playwright==${PLAYWRIGHT_VERSION}" 2>&1 | grep -v "^$" || true
-
-        else
-            log_warn "uv 未安装，使用 pip..."
-            pip install -e . || {
-                log_error "依赖安装失败"
-                exit 1
-            }
-            log_info "pyproject.toml 依赖安装完成 ✓"
-        fi
-
-    # 检查是否有 requirements.txt
-    elif [ -f "requirements.txt" ]; then
-        log_info "检测到 requirements.txt，安装项目依赖..."
-
-        pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple
-
-        log_info "requirements.txt 依赖安装完成 ✓"
-
+    if python -c "import playwright; import sys; sys.exit(0 if playwright.__version__ == '${PLAYWRIGHT_VERSION}' else 1)" &> /dev/null; then
+        log_info "Playwright 版本已是 ${PLAYWRIGHT_VERSION}，跳过安装 ✓"
     else
-        log_warn "未检测到 pyproject.toml 或 requirements.txt"
-        log_warn "跳过项目依赖安装"
+        log_info "锁定 playwright 版本: ${PLAYWRIGHT_VERSION}..."
+        if command -v uv &> /dev/null; then
+            uv pip install --no-deps "playwright==${PLAYWRIGHT_VERSION}" 2>&1 | grep -v "^$" || true
+        else
+            pip install --no-deps "playwright==${PLAYWRIGHT_VERSION}" 2>&1 | grep -v "^$" || true
+        fi
     fi
 }
 
@@ -233,10 +203,9 @@ check_chromium() {
 
     # 尝试使用国内镜像
     log_info "尝试使用国内镜像下载..."
-    log_debug "使用镜像: https://npmmirror.com/mirrors/playwright/"
+    log_debug "使用镜像: $PLAYWRIGHT_DOWNLOAD_HOST"
 
-    CHROMIUM_OUTPUT=$(PLAYWRIGHT_DOWNLOAD_HOST=https://npmmirror.com/mirrors/playwright/ \
-        PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_PATH" \
+    CHROMIUM_OUTPUT=$(PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_PATH" \
         uv run --no-project playwright install chromium 2>&1)
     CHROMIUM_EXIT_CODE=$?
 
@@ -248,12 +217,10 @@ check_chromium() {
         FALLBACK_VERSION="$PLAYWRIGHT_VERSION"
         log_info "降级 playwright 到 ${FALLBACK_VERSION}..."
 
-        UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple \
         uv pip install "playwright==${FALLBACK_VERSION}" 2>&1 | grep -v "^$" || true
 
         # 重新尝试用镜像下载
-        CHROMIUM_OUTPUT=$(PLAYWRIGHT_DOWNLOAD_HOST=https://npmmirror.com/mirrors/playwright/ \
-            PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_PATH" \
+        CHROMIUM_OUTPUT=$(PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_PATH" \
             uv run --no-project playwright install chromium 2>&1)
         CHROMIUM_EXIT_CODE=$?
 
@@ -262,11 +229,9 @@ check_chromium() {
             FALLBACK_VERSION="1.44.0"
             log_warn "版本 1.48.0 也不可用，尝试 ${FALLBACK_VERSION}..."
 
-            UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple \
             uv pip install "playwright==${FALLBACK_VERSION}" 2>&1 | grep -v "^$" || true
 
-            CHROMIUM_OUTPUT=$(PLAYWRIGHT_DOWNLOAD_HOST=https://npmmirror.com/mirrors/playwright/ \
-                PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_PATH" \
+            CHROMIUM_OUTPUT=$(PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_PATH" \
                 uv run --no-project playwright install chromium 2>&1)
             CHROMIUM_EXIT_CODE=$?
         fi
@@ -322,7 +287,9 @@ start_application() {
     
     # 设置环境变量
     export PYTHONUNBUFFERED=1
-    export UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple
+    export PIP_INDEX_URL="$PIP_INDEX_URL"
+    export UV_INDEX_URL="$UV_INDEX_URL"
+    export PLAYWRIGHT_DOWNLOAD_HOST="$PLAYWRIGHT_DOWNLOAD_HOST"
     export UV_LINK_MODE=copy
     
     # PLAYWRIGHT_BROWSERS_PATH 由 check_chromium 函数设置
