@@ -39,6 +39,21 @@ else
     echo "⚠ 警告: 未找到 bot.sh 模板文件"
 fi
 
+# 复制 update.sh 更新脚本到代码目录
+if [ -f "${SCRIPT_DIR}/update.sh" ]; then
+    echo "正在复制 update.sh 更新脚本到代码目录..."
+    cp -f "${SCRIPT_DIR}/update.sh" "${CODE_DIR}/update.sh"
+    
+    # 转换 Windows 换行符 (CRLF) 为 Unix 换行符 (LF)
+    sed -i 's/\r$//' "${CODE_DIR}/update.sh" 2>/dev/null || sed -i '' 's/\r$//' "${CODE_DIR}/update.sh" 2>/dev/null || true
+    
+    chmod +x "${CODE_DIR}/update.sh"
+    echo "✓ update.sh 更新脚本已复制并设置为可执行"
+else
+    echo "⚠ 警告: 未找到 update.sh 模板文件"
+fi
+
+
 # 检查必要文件
 if [ -f "${CODE_DIR}/pyproject.toml" ]; then
     echo "✓ 检测到 pyproject.toml"
