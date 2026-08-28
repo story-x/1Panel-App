@@ -1,0 +1,28 @@
+name: zashboard
+tags:
+  - 实用工具
+  - 网络
+title: Zashboard - 基于 Clash API 的现代化 Web 控制面板
+description: 现代化、美观、功能强大的 Clash / Mihomo Web 仪表盘控制面板
+additionalProperties:
+  key: zashboard
+  name: Zashboard
+  tags:
+    - Tool
+    - Network
+  shortDescZh: 现代化、美观、功能强大的 Clash / Mihomo Web 仪表盘控制面板
+  shortDescEn: A modern and powerful web dashboard using Clash API
+  description:
+    en: A modern, beautiful and powerful web dashboard for Clash and Mihomo using Clash API.
+    zh: 现代化、美观、功能强大的 Clash / Mihomo Web 仪表盘控制面板，支持节点切换、延迟测速、规则管理、连接监控等丰富功能。
+    zh-Hant: 現代化、美觀、功能強大的 Clash / Mihomo Web 儀表板控制面板，支援節點切換、延遲測速、規則管理、連線監控等豐富功能。
+  type: tool
+  crossVersionUpdate: true
+  limit: 0
+  recommend: 0
+  website: http://board.zash.run.place
+  github: https://github.com/Zephyruso/zashboard
+  document: https://github.com/Zephyruso/zashboard/blob/main/README.md
+  architectures:
+    - amd64
+    - arm64

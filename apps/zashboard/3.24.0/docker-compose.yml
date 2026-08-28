@@ -1,0 +1,17 @@
+services:
+  zashboard:
+    image: ghcr.io/zephyruso/zashboard:v3.24.0
+    container_name: ${CONTAINER_NAME}
+    restart: always
+    ports:
+      - ${PANEL_APP_PORT_HTTP}:80
+    networks:
+      - 1panel-network
+    environment:
+      - TZ=${TZ}
+    labels:
+      createdBy: "Apps"
+
+networks:
+  1panel-network:
+    external: true
