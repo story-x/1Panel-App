@@ -6,6 +6,34 @@ services:
     restart: always
     cap_add:
       - NET_ADMIN
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        if [ ! -f /root/.config/mihomo/config.yaml ]; then
+          cat <<'EOF' > /root/.config/mihomo/config.yaml
+        mixed-port: 7890
+        allow-lan: true
+        mode: rule
+        log-level: info
+        ipv6: false
+        external-controller: 0.0.0.0:9090
+        secret: "${SECRET}"
+        cors:
+          allow-origins:
+            - '*'
+          allow-private-network: true
+        proxies: []
+        proxy-groups:
+          - name: PROXY
+            type: select
+            proxies:
+              - DIRECT
+        rules:
+          - MATCH,DIRECT
+        EOF
+        fi
+        exec /mihomo -d /root/.config/mihomo
     ports:
       - ${PANEL_APP_PORT_HTTP}:7890
       - ${CONTROLLER_PORT}:9090
