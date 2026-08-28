@@ -1,0 +1,55 @@
+additionalProperties:
+  formFields:
+    - default: 7890
+      edit: true
+      envKey: PANEL_APP_PORT_HTTP
+      labelEn: Mixed Proxy Port
+      labelZh: 混合代理端口(HTTP/SOCKS5)
+      label:
+        en: Mixed Proxy Port
+        zh: 混合代理端口(HTTP/SOCKS5)
+      required: true
+      rule: paramPort
+      type: number
+    - default: 9090
+      edit: true
+      envKey: CONTROLLER_PORT
+      labelEn: Controller Port
+      labelZh: 外部控制器端口(API)
+      label:
+        en: Controller Port
+        zh: 外部控制器端口(API)
+      required: true
+      rule: paramPort
+      type: number
+    - default: ""
+      edit: true
+      envKey: SECRET
+      labelEn: Controller Secret
+      labelZh: 控制器密钥(Secret)
+      label:
+        en: Controller Secret
+        zh: 控制器密钥(Secret)
+      random: true
+      required: false
+      type: text
+    - default: ./data
+      edit: true
+      envKey: CONFIG_PATH
+      labelEn: Config Path
+      labelZh: 配置与数据目录
+      label:
+        en: Config Path
+        zh: 配置与数据目录
+      required: true
+      type: text
+    - default: Asia/Shanghai
+      edit: true
+      envKey: TZ
+      labelEn: Time Zone
+      labelZh: 时区
+      label:
+        en: Time Zone
+        zh: 时区
+      required: true
+      type: text

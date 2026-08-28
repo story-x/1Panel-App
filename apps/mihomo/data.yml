@@ -1,0 +1,28 @@
+name: mihomo
+tags:
+  - 实用工具
+  - 网络
+title: Mihomo - 基于 Go 的现代化规则代理核心 (Clash.Meta)
+description: 基于 Go 开发的规则分流代理核心，支持多种代理协议、TUN 模式与 RESTful API 控制
+additionalProperties:
+  key: mihomo
+  name: Mihomo
+  tags:
+    - Tool
+    - Network
+  shortDescZh: 基于 Go 的规则分流代理核心 (Clash.Meta)，支持多种协议与 RESTful API 控制
+  shortDescEn: A rule-based proxy kernel in Go (formerly Clash.Meta)
+  description:
+    en: A rule-based proxy kernel in Go (formerly Clash.Meta), supporting various proxy protocols, rule-based routing, TUN mode and RESTful API control.
+    zh: 基于 Go 开发的规则分流代理核心 (Clash.Meta)，支持 Shadowsocks、Vmess、Trojan、Vless、Hysteria2 等多种协议，支持精细规则分流、TUN 模式与 RESTful API 外部控制。
+    zh-Hant: 基於 Go 開發的規則分流代理核心 (Clash.Meta)，支援多種代理協定、精細規則分流、TUN 模式與 RESTful API 外部控制。
+  type: tool
+  crossVersionUpdate: true
+  limit: 0
+  recommend: 0
+  website: https://wiki.metacubex.one
+  github: https://github.com/MetaCubeX/mihomo
+  document: https://wiki.metacubex.one
+  architectures:
+    - amd64
+    - arm64

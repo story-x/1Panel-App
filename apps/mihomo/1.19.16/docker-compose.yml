@@ -1,0 +1,23 @@
+services:
+  mihomo:
+    image: metacubex/mihomo:v1.19.16
+    container_name: ${CONTAINER_NAME}
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - ${PANEL_APP_PORT_HTTP}:7890
+      - ${CONTROLLER_PORT}:9090
+    networks:
+      - 1panel-network
+    volumes:
+      - ${CONFIG_PATH}:/root/.config/mihomo
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - TZ=${TZ}
+    labels:
+      createdBy: "Apps"
+
+networks:
+  1panel-network:
+    external: true
