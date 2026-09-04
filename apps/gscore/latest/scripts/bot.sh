@@ -11,8 +11,8 @@ set -e  # 遇到错误立即退出
 # 可选：指定 Playwright 版本（留空则自动安装适配版本，公版 Python 建议留空）
 PLAYWRIGHT_VERSION="${PLAYWRIGHT_VERSION:-}"
 
-# 国内镜像源定义
-export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}"
+# 国内镜像源定义（默认使用阿里云镜像源，稳定且支持全系列二进制 Wheel）
+export PIP_INDEX_URL="${PIP_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}"
 export UV_INDEX_URL="${UV_INDEX_URL:-$PIP_INDEX_URL}"
 export PLAYWRIGHT_DOWNLOAD_HOST="${PLAYWRIGHT_DOWNLOAD_HOST:-https://npmmirror.com/mirrors/playwright/}"
 
@@ -54,6 +54,54 @@ echo "=========================================="
 echo ""
 
 #######################################
+# 0. 检查并安装系统底层基础依赖 (git, C 动态链接库)
+# 适配公版 python:slim 镜像无 git 与缺失 OpenGL/XCB 动态库的情况
+#######################################
+check_system_dependencies() {
+    log_info "检查系统基础依赖 (git, 图像与图形 C 运行库)..."
+    local missing_pkgs=""
+
+    # 1. 检查 git (GsCore 核心更新、插件拉取与版本识别必需)
+    if ! command -v git &> /dev/null; then
+        missing_pkgs="$missing_pkgs git"
+    fi
+
+    # 2. 检查 OpenCV/图像处理所需的系统 C 动态链接库 (使用 Python ctypes 跨架构精准检测)
+    if ! python -c "import ctypes; ctypes.CDLL('libxcb.so.1')" &> /dev/null; then
+        missing_pkgs="$missing_pkgs libxcb1"
+    fi
+    if ! python -c "import ctypes; ctypes.CDLL('libGL.so.1')" &> /dev/null; then
+        missing_pkgs="$missing_pkgs libgl1"
+    fi
+    if ! python -c "import ctypes; ctypes.CDLL('libglib-2.0.so.0')" &> /dev/null; then
+        missing_pkgs="$missing_pkgs libglib2.0-0"
+    fi
+
+    if [ -n "$missing_pkgs" ]; then
+        log_warn "检测到公版 slim 镜像缺少以下系统运行依赖:$missing_pkgs"
+        log_info "正在自动配置国内源并快速安装系统依赖..."
+        
+        # 换国内源加速 apt（支持 Debian 12 debian.sources 及旧版 sources.list）
+        if [ -f /etc/apt/sources.list.d/debian.sources ]; then
+            sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || true
+        fi
+        if [ -f /etc/apt/sources.list ]; then
+            sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list 2>/dev/null || true
+        fi
+
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get update -qq || true
+        apt-get install -y --no-install-recommends $missing_pkgs && rm -rf /var/lib/apt/lists/* || {
+            log_warn "部分系统依赖安装异常，尝试继续执行启动流程..."
+        }
+        ldconfig 2>/dev/null || true
+        log_info "系统基础依赖补齐完成 ✓ ($missing_pkgs)"
+    else
+        log_info "系统基础依赖已就绪 ✓"
+    fi
+}
+
+#######################################
 # 1. 检查环境
 #######################################
 check_environment() {
@@ -80,7 +128,9 @@ check_environment() {
         log_info "uv 版本: ${UV_VERSION}"
     else
         log_info "当前环境未找到 uv，尝试自动安装 uv..."
-        python -m pip install uv -i "$PIP_INDEX_URL" 2>&1 | grep -v "^$" || true
+        python -m pip install uv -i "$PIP_INDEX_URL" --trusted-host mirrors.aliyun.com 2>&1 | grep -v "^$" || \
+        python -m pip install uv -i "https://pypi.tuna.tsinghua.edu.cn/simple/" --trusted-host pypi.tuna.tsinghua.edu.cn 2>&1 | grep -v "^$" || \
+        python -m pip install uv 2>&1 | grep -v "^$" || true
         if command -v uv &> /dev/null; then
             UV_VERSION=$(uv --version 2>&1 | awk '{print $2}')
             log_info "uv 安装完成 ✓ (${UV_VERSION})"
@@ -445,6 +495,9 @@ start_application() {
 #######################################
 main() {
     # 执行各个步骤
+    check_system_dependencies
+    echo ""
+
     check_environment
     echo ""
     
