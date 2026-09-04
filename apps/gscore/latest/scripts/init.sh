@@ -5,7 +5,23 @@
 
 set -e
 
-source ./.env
+# 脚本所在目录及应用根目录
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BASE_DIR="$(dirname "$SCRIPT_DIR")"
+
+# 尝试寻找并载入 .env 配置
+if [ -f "${BASE_DIR}/.env" ]; then
+    source "${BASE_DIR}/.env"
+elif [ -f "${SCRIPT_DIR}/.env" ]; then
+    source "${SCRIPT_DIR}/.env"
+elif [ -f "./.env" ]; then
+    source ./.env
+fi
+
+# 兜底默认值
+CODE_DIR="${CODE_DIR:-/opt/gsuid_core}"
+CONTAINER_NAME="${CONTAINER_NAME:-gsuid-core}"
+PANEL_APP_PORT_HTTP="${PANEL_APP_PORT_HTTP:-8765}"
 
 echo "=========================================="
 echo "  GsCore 初始化"
@@ -25,7 +41,6 @@ else
 fi
 
 # 复制 bot.sh 启动脚本到代码目录
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -f "${SCRIPT_DIR}/bot.sh" ]; then
     echo "正在复制 bot.sh 启动脚本到代码目录..."
     cp -f "${SCRIPT_DIR}/bot.sh" "${CODE_DIR}/bot.sh"

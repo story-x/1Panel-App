@@ -29,4 +29,27 @@ additionalProperties:
       labelZh: 启动命令
       required: true
       type: text
-
+    - default: 'true'
+      edit: true
+      envKey: INSTALL_OPENCV
+      labelEn: Install OpenCV
+      labelZh: 选装 OpenCV (图像处理)
+      required: true
+      type: select
+      values:
+        - label: 是 (安装 opencv-python-headless)
+          value: 'true'
+        - label: 否 (跳过安装)
+          value: 'false'
+    - default: 'false'
+      edit: true
+      envKey: INSTALL_PLAYWRIGHT
+      labelEn: Install Playwright & Chromium
+      labelZh: 选装 Playwright 及浏览器 (网页/卡片渲染)
+      required: true
+      type: select
+      values:
+        - label: 是 (安装 Playwright + Chromium)
+          value: 'true'
+        - label: 否 (跳过，轻量秒启)
+          value: 'false'

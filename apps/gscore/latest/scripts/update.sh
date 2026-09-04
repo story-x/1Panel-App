@@ -28,12 +28,22 @@ if [ -n "$ENV_FILE" ]; then
     done < "$ENV_FILE"
 fi
 
-# 如果 CONTAINER_NAME 未定义，通过 docker 查找基于 strycn/gsuid-core 镜像的容器名
+# 如果 CONTAINER_NAME 未定义，通过 docker 标签或名称精准查找容器
 if [ -z "$CONTAINER_NAME" ]; then
     echo "未在配置中找到 CONTAINER_NAME，尝试从 Docker 容器中动态识别..."
-    CONTAINER_NAME=$(docker ps -a --filter "ancestor=strycn/gsuid-core" --format "{{.Names}}" | head -n 1)
+    # 1. 优先通过唯一标签 app=gscore 精准匹配（不受改名或基础镜像影响）
+    CONTAINER_NAME=$(docker ps -a --filter "label=app=gscore" --format "{{.Names}}" | head -n 1)
+    # 2. 备选通过容器名称过滤
     if [ -z "$CONTAINER_NAME" ]; then
-        CONTAINER_NAME=$(docker ps -a --format '{{.Names}} {{.Image}}' | grep "gsuid-core" | awk '{print $1}' | head -n 1)
+        CONTAINER_NAME=$(docker ps -a --filter "name=gsuid-core" --format "{{.Names}}" | head -n 1)
+    fi
+    # 3. 兜底通过镜像过滤
+    if [ -z "$CONTAINER_NAME" ]; then
+        CONTAINER_NAME=$(docker ps -a --filter "ancestor=${DOCKER_IMAGE:-python:3.13-slim}" --format "{{.Names}}" | head -n 1)
+    fi
+    # 4. 兜底模糊匹配
+    if [ -z "$CONTAINER_NAME" ]; then
+        CONTAINER_NAME=$(docker ps -a --format '{{.Names}}' | grep "gsuid-core" | head -n 1)
     fi
 fi
 
@@ -73,6 +83,13 @@ find "$CODE_DIR" -maxdepth 4 -type d -name ".git" | while read -r gitdir; do
     repo_dir=$(dirname "$gitdir")
     echo "进入目录: $repo_dir"
     cd "$repo_dir" || continue
+
+    # 如果存在 uv.lock，提前清理以防止 git pull 冲突
+    if [ -f "${repo_dir}/uv.lock" ]; then
+        echo "发现 ${repo_dir}/uv.lock，正在清理以避免 git pull 冲突..."
+        rm -f "${repo_dir}/uv.lock"
+    fi
+
     echo "执行 git pull..."
 
     output=$(git pull 2>&1)

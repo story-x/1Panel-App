@@ -53,8 +53,8 @@
    - **容器名称**: 自定义容器名称 (默认: `gsuid-core`)
    - **WebUI 端口**: WebUI 访问端口 (默认: `8765`)
    - **时区设置**: 时区配置 (默认: `Asia/Shanghai`)
-   - **Python 版本**: Python 版本选择 (默认: `3.13`)
-   - **镜像配置**: 镜像仓库、名称和标签
+   - **选装 OpenCV**: 是否安装 OpenCV 图像处理支持 (默认: `true`，自动安装 `opencv-python-headless`)
+   - **选装 Playwright**: 是否安装 Playwright 及 Chromium 浏览器 (默认: `false`，轻量秒启；需卡片截图时开启)
 
 3. **点击安装**: 等待容器启动完成
 
@@ -66,20 +66,16 @@
 
 #### 环境变量
 
-| 变量名 | 说明 | 默认值 |
-|--------|------|--------|
-| `CODE_DIR` | 代码目录(宿主机绝对路径) | `/opt/gsuid_core` |
-| `CONTAINER_NAME` | 容器名称 | `gsuid-core` |
-| `PANEL_APP_PORT_HTTP` | WebUI 端口 | `8765` |
-| `HOST_PORT_0` | 主机端口 | `8765` |
-| `CONTAINER_PORT_0` | 容器端口 | `8765` |
-| `HOST_IP_0` | 主机 IP (留空表示不绑定) | `` |
-| `TZ` | 时区设置 | `Asia/Shanghai` |
-| `PYTHON_VERSION` | Python 版本 | `3.13` |
-| `IMAGE_REGISTRY` | 镜像仓库 | `strycn` |
-| `IMAGE_NAME` | 镜像名称 | `gsuid-core` |
-| `IMAGE_TAG` | 镜像标签 | `latest` |
-| `START_COMMAND` | 启动命令 | `bash /app/bot.sh` |
+| 变量名 | 说明 | 默认值 | 推荐配置 / 可选值 |
+|--------|------|--------|------------------|
+| `CODE_DIR` | 代码目录(宿主机绝对路径) | `/opt/gsuid_core` | 需挂载至宿主机的实际代码路径 |
+| `CONTAINER_NAME` | 容器名称 | `gsuid-core` | 保持默认或自定义 |
+| `PANEL_APP_PORT_HTTP` | WebUI 端口 | `8765` | 可自定义未占用端口 |
+| `TZ` | 时区设置 | `Asia/Shanghai` | 推荐 `Asia/Shanghai` |
+| `START_COMMAND` | 启动命令 | `bash /app/bot.sh` | 容器入口启动脚本 |
+| `DOCKER_IMAGE` | Docker 基础镜像 | `python:3.13-slim` | 默认直接使用公版官方 Python 镜像 |
+| `INSTALL_OPENCV` | 选装 OpenCV 依赖 | `true` | `true` (安装 headless 版免系统库) / `false` |
+| `INSTALL_PLAYWRIGHT`| 选装 Playwright 与 Chromium | `false` | `false` (轻量秒启) / `true` (渲染网页和游戏卡片) |
 
 #### 目录挂载
 

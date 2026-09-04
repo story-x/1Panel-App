@@ -4,7 +4,7 @@ networks:
 
 services:
     gsuid-core:
-        image: strycn/gsuid-core:latest
+        image: ${DOCKER_IMAGE:-python:3.13-slim}
         container_name: ${CONTAINER_NAME}
         restart: always
         ports:
@@ -17,11 +17,20 @@ services:
             # 挂载时区文件
             - /etc/localtime:/etc/localtime:ro
             - /etc/timezone:/etc/timezone:ro
+        hostname: ${CONTAINER_NAME:-gsuid-core}
         environment:
             - PYTHONUNBUFFERED=1
             - TZ=${TZ}
+            - APP_NAME=GsCore
+            - APP_KEY=gscore
+            - INSTALL_OPENCV=${INSTALL_OPENCV:-true}
+            - INSTALL_PLAYWRIGHT=${INSTALL_PLAYWRIGHT:-false}
         working_dir: /app
         # 启动命令
         command: ${START_COMMAND}
         labels:
             createdBy: "Apps"
+            app: "gscore"
+            app.name: "GsCore"
+            app.title: "早柚核心 (GsCore)"
+            app.description: "多平台游戏查询 Bot 核心框架"
