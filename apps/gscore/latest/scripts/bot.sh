@@ -8,13 +8,11 @@
 
 set -e  # 遇到错误立即退出
 
-# 可选：指定 Playwright 版本（留空则自动安装适配版本，公版 Python 建议留空）
-PLAYWRIGHT_VERSION="${PLAYWRIGHT_VERSION:-}"
-
-# 国内镜像源定义（默认使用阿里云镜像源，稳定且支持全系列二进制 Wheel）
+# 国内多镜像源定义（默认阿里云，备选字节跳动火山引擎源、清华源）
 export PIP_INDEX_URL="${PIP_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}"
+export PIP_EXTRA_INDEX_URL="${PIP_EXTRA_INDEX_URL:-https://mirrors.volces.com/pypi/simple/ https://pypi.tuna.tsinghua.edu.cn/simple/}"
 export UV_INDEX_URL="${UV_INDEX_URL:-$PIP_INDEX_URL}"
-export PLAYWRIGHT_DOWNLOAD_HOST="${PLAYWRIGHT_DOWNLOAD_HOST:-https://npmmirror.com/mirrors/playwright/}"
+export UV_EXTRA_INDEX_URL="${UV_EXTRA_INDEX_URL:-$PIP_EXTRA_INDEX_URL}"
 
 # 颜色定义
 RED='\033[0;31m'
@@ -74,28 +72,80 @@ check_system_dependencies() {
         missing_pkgs="$missing_pkgs libgl1"
     fi
     if ! python -c "import ctypes; ctypes.CDLL('libglib-2.0.so.0')" &> /dev/null; then
-        missing_pkgs="$missing_pkgs libglib2.0-0"
+        # Debian 13+ (trixie/sid) 及 Ubuntu 24.04+ (noble) 因 64 位 time_t 迁移更名为 libglib2.0-0t64
+        if grep -qE "trixie|sid|noble|forky" /etc/os-release 2>/dev/null; then
+            missing_pkgs="$missing_pkgs libglib2.0-0t64"
+        else
+            missing_pkgs="$missing_pkgs libglib2.0-0"
+        fi
     fi
 
     if [ -n "$missing_pkgs" ]; then
         log_warn "检测到公版 slim 镜像缺少以下系统运行依赖:$missing_pkgs"
         log_info "正在自动配置国内源并快速安装系统依赖..."
         
-        # 换国内源加速 apt（支持 Debian 12 debian.sources 及旧版 sources.list）
-        if [ -f /etc/apt/sources.list.d/debian.sources ]; then
-            sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || true
-        fi
-        if [ -f /etc/apt/sources.list ]; then
-            sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list 2>/dev/null || true
-        fi
+        # 修复 /tmp 目录权限，防止 _apt 用户创建临时文件验签时报 Permission denied (13)
+        mkdir -p /tmp 2>/dev/null || true
+        chmod 1777 /tmp 2>/dev/null || true
+
+        # 配置 APT 沙盒用户为 root，避免 Docker 容器环境下 _apt 降权沙盒引发权限异常
+        mkdir -p /etc/apt/apt.conf.d 2>/dev/null || true
+        echo 'APT::Sandbox::User "root";' > /etc/apt/apt.conf.d/99sandbox 2>/dev/null || true
+
+        # 换源工具函数：支持 Debian 12/13 debian.sources 及旧版 sources.list，支持在多镜像源间平滑切换
+        switch_apt_mirror() {
+            local mirror_host="$1"
+            if [ -f /etc/apt/sources.list.d/debian.sources ]; then
+                sed -i -E "s#(deb\.debian\.org|mirrors\.[a-zA-Z0-9.-]+)#${mirror_host}#g" /etc/apt/sources.list.d/debian.sources 2>/dev/null || true
+            fi
+            if [ -f /etc/apt/sources.list ]; then
+                sed -i -E "s#(deb\.debian\.org|mirrors\.[a-zA-Z0-9.-]+)#${mirror_host}#g" /etc/apt/sources.list 2>/dev/null || true
+            fi
+        }
 
         export DEBIAN_FRONTEND=noninteractive
-        apt-get update -qq || true
-        apt-get install -y --no-install-recommends $missing_pkgs && rm -rf /var/lib/apt/lists/* || {
-            log_warn "部分系统依赖安装异常，尝试继续执行启动流程..."
-        }
-        ldconfig 2>/dev/null || true
-        log_info "系统基础依赖补齐完成 ✓ ($missing_pkgs)"
+
+        # 优先使用阿里源，若失败则自动切换至字节跳动 (火山引擎) 源，再失败回退至清华源
+        log_info "配置 APT 阿里源 (mirrors.aliyun.com)..."
+        switch_apt_mirror "mirrors.aliyun.com"
+
+        if ! apt-get -o APT::Sandbox::User=root update -qq 2>&1; then
+            log_warn "阿里 APT 源更新未成功，正在自动切换至 [字节跳动 (火山引擎) 源] (mirrors.volces.com)..."
+            switch_apt_mirror "mirrors.volces.com"
+            if ! apt-get -o APT::Sandbox::User=root update -qq 2>&1; then
+                log_warn "字节跳动 APT 源更新未成功，正在切换至 [清华大学源] (mirrors.tuna.tsinghua.edu.cn)..."
+                switch_apt_mirror "mirrors.tuna.tsinghua.edu.cn"
+                apt-get -o APT::Sandbox::User=root update -qq 2>&1 || true
+            fi
+        fi
+
+        # 优先批量安装
+        if apt-get -o APT::Sandbox::User=root install -y --no-install-recommends $missing_pkgs 2>&1; then
+            rm -rf /var/lib/apt/lists/*
+            ldconfig 2>/dev/null || true
+            log_info "系统基础依赖补齐完成 ✓ ($missing_pkgs)"
+        else
+            log_warn "批量安装依赖遇到异常，尝试逐个安装与容错回退..."
+            for pkg in $missing_pkgs; do
+                if [[ "$pkg" == "libglib2.0-0" ]]; then
+                    apt-get -o APT::Sandbox::User=root install -y --no-install-recommends libglib2.0-0 2>/dev/null || \
+                    apt-get -o APT::Sandbox::User=root install -y --no-install-recommends libglib2.0-0t64 2>/dev/null || true
+                elif [[ "$pkg" == "libglib2.0-0t64" ]]; then
+                    apt-get -o APT::Sandbox::User=root install -y --no-install-recommends libglib2.0-0t64 2>/dev/null || \
+                    apt-get -o APT::Sandbox::User=root install -y --no-install-recommends libglib2.0-0 2>/dev/null || true
+                else
+                    apt-get -o APT::Sandbox::User=root install -y --no-install-recommends "$pkg" 2>/dev/null || true
+                fi
+            done
+            rm -rf /var/lib/apt/lists/*
+            ldconfig 2>/dev/null || true
+
+            if command -v git &> /dev/null; then
+                log_info "基础系统依赖补齐流程结束 (git 已就绪 ✓)"
+            else
+                log_warn "git 未能成功安装，部分依赖 Git 的功能可能受限"
+            fi
+        fi
     else
         log_info "系统基础依赖已就绪 ✓"
     fi
@@ -115,6 +165,27 @@ check_environment() {
     
     PYTHON_VERSION=$(python --version 2>&1 | awk '{print $2}')
     log_info "Python 版本: ${PYTHON_VERSION}"
+
+    # 动态检测与配置 PyPI / uv 镜像源 (阿里源 -> 字节跳动火山引擎源 -> 清华源)
+    local aliyun_pypi="https://mirrors.aliyun.com/pypi/simple/"
+    local bytedance_pypi="https://mirrors.volces.com/pypi/simple/"
+    local tsinghua_pypi="https://pypi.tuna.tsinghua.edu.cn/simple/"
+
+    if python -c "import urllib.request; urllib.request.urlopen('$aliyun_pypi', timeout=2)" &>/dev/null; then
+        export PIP_INDEX_URL="$aliyun_pypi"
+        export PIP_EXTRA_INDEX_URL="$bytedance_pypi $tsinghua_pypi"
+        log_info "PyPI/uv 镜像源: 优先使用 [阿里源] (备选: 字节跳动火山引擎源、清华源)"
+    elif python -c "import urllib.request; urllib.request.urlopen('$bytedance_pypi', timeout=2)" &>/dev/null; then
+        export PIP_INDEX_URL="$bytedance_pypi"
+        export PIP_EXTRA_INDEX_URL="$aliyun_pypi $tsinghua_pypi"
+        log_warn "阿里 PyPI 源无响应，已自动切换至 [字节跳动 (火山引擎) 源] 作为主源"
+    else
+        export PIP_INDEX_URL="$tsinghua_pypi"
+        export PIP_EXTRA_INDEX_URL="$bytedance_pypi $aliyun_pypi"
+        log_warn "阿里与字节 PyPI 源均不可用，已自动切换至 [清华源] 作为主源"
+    fi
+    export UV_INDEX_URL="$PIP_INDEX_URL"
+    export UV_EXTRA_INDEX_URL="$PIP_EXTRA_INDEX_URL"
     
     # 检查 pip
     if ! python -m pip --version &> /dev/null; then
@@ -128,7 +199,8 @@ check_environment() {
         log_info "uv 版本: ${UV_VERSION}"
     else
         log_info "当前环境未找到 uv，尝试自动安装 uv..."
-        python -m pip install uv -i "$PIP_INDEX_URL" --trusted-host mirrors.aliyun.com 2>&1 | grep -v "^$" || \
+        python -m pip install uv -i "$PIP_INDEX_URL" 2>&1 | grep -v "^$" || \
+        python -m pip install uv -i "https://mirrors.volces.com/pypi/simple/" --trusted-host mirrors.volces.com 2>&1 | grep -v "^$" || \
         python -m pip install uv -i "https://pypi.tuna.tsinghua.edu.cn/simple/" --trusted-host pypi.tuna.tsinghua.edu.cn 2>&1 | grep -v "^$" || \
         python -m pip install uv 2>&1 | grep -v "^$" || true
         if command -v uv &> /dev/null; then
@@ -177,6 +249,13 @@ setup_virtualenv() {
     # 验证虚拟环境
     PYTHON_PATH=$(which python)
     log_info "Python 路径: $PYTHON_PATH"
+
+    # 确保虚拟环境中包含 pip (GsCore 动态安装插件依赖必需)
+    if ! python -m pip --version &> /dev/null; then
+        log_info "虚拟环境中未检测到 pip，正在补齐 pip (ensurepip)..."
+        uv run python -m ensurepip 2>/dev/null || python -m ensurepip 2>/dev/null || true
+    fi
+
     log_info "虚拟环境激活完成 ✓"
 }
 
@@ -198,12 +277,13 @@ sync_project_dependencies() {
 
     if [ $need_sync -eq 1 ]; then
         if [ -f "pyproject.toml" ]; then
-            log_info "检测到 pyproject.toml，使用 uv 进行项目依赖同步..."
+            log_info "检测到 pyproject.toml，使用 uv sync 进行项目依赖同步..."
             if command -v uv &> /dev/null; then
-                uv sync --no-dev 2>&1 | grep -v "DeprecationWarning" || {
+                uv sync 2>&1 | grep -v "DeprecationWarning" || {
                     log_warn "uv sync 失败，尝试执行 uv pip install -e . ..."
                     uv pip install -e .
                 }
+                uv run python -m ensurepip 2>/dev/null || true
             else
                 pip install -e .
             fi
@@ -225,140 +305,12 @@ sync_project_dependencies() {
 }
 
 #######################################
-# 3. 检查并安装 Chromium 浏览器
-#######################################
-check_chromium() {
-    # 检查 playwright 是否已安装
-    if ! python -c "import playwright" &> /dev/null; then
-        log_debug "playwright 未安装，跳过浏览器检查"
-        return
-    fi
-
-    log_info "检查 Chromium 浏览器..."
-
-    # 定义浏览器路径
-    BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-/ms-playwright}"
-    FORCE_REINSTALL="${FORCE_REINSTALL_CHROMIUM:-0}"
-
-    log_debug "浏览器安装路径: $BROWSERS_PATH"
-
-    # 强制重装时才清理
-    if [ "$FORCE_REINSTALL" = "1" ]; then
-        log_warn "检测到 FORCE_REINSTALL_CHROMIUM=1，执行 Chromium 强制重装"
-        rm -rf "$BROWSERS_PATH"
-    fi
-
-    # 发现已有浏览器则直接复用，不自动删除重装
-    if [ -d "$BROWSERS_PATH" ]; then
-        CHROMIUM_PATH=$(find "$BROWSERS_PATH" -maxdepth 2 -name "chromium-*" -type d 2>/dev/null | head -n 1)
-        if [ -n "$CHROMIUM_PATH" ]; then
-            log_info "发现已安装的 Chromium: $(basename "$CHROMIUM_PATH")"
-            export PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_PATH"
-            log_info "复用已安装 Chromium（不重新下载）✓"
-            return
-        fi
-    fi
-
-    log_info "未发现 Chromium，开始安装..."
-    log_info "这可能需要 1-2 分钟，请耐心等待..."
-
-    # 临时禁用 set -e，防止安装失败导致脚本退出
-    set +e
-
-    # 尝试使用国内镜像
-    log_info "尝试使用国内镜像下载..."
-    log_debug "使用镜像: $PLAYWRIGHT_DOWNLOAD_HOST"
-
-    if command -v uv &> /dev/null; then
-        CHROMIUM_OUTPUT=$(PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_PATH" \
-            uv run --no-project playwright install chromium 2>&1)
-    else
-        CHROMIUM_OUTPUT=$(PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_PATH" \
-            playwright install chromium 2>&1)
-    fi
-    CHROMIUM_EXIT_CODE=$?
-
-    # 检查是否是 404 错误（镜像未同步最新版本）
-    if [ $CHROMIUM_EXIT_CODE -ne 0 ] && echo "$CHROMIUM_OUTPUT" | grep -q "404\|NoSuchKey"; then
-        log_warn "国内镜像未同步最新版本，尝试安装较旧的稳定版本..."
-
-        # 回退到已知在镜像上可用的稳定版本
-        FALLBACK_VERSION="${PLAYWRIGHT_VERSION:-1.49.1}"
-        log_info "降级 playwright 到 ${FALLBACK_VERSION}..."
-
-        if command -v uv &> /dev/null; then
-            uv pip install "playwright==${FALLBACK_VERSION}" 2>&1 | grep -v "^$" || true
-            CHROMIUM_OUTPUT=$(PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_PATH" \
-                uv run --no-project playwright install chromium 2>&1)
-        else
-            pip install "playwright==${FALLBACK_VERSION}" 2>&1 | grep -v "^$" || true
-            CHROMIUM_OUTPUT=$(PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_PATH" \
-                playwright install chromium 2>&1)
-        fi
-        CHROMIUM_EXIT_CODE=$?
-
-        # 如果还是失败，再尝试更老的版本
-        if [ $CHROMIUM_EXIT_CODE -ne 0 ] && echo "$CHROMIUM_OUTPUT" | grep -q "404\|NoSuchKey"; then
-            FALLBACK_VERSION="1.44.0"
-            log_warn "版本 1.48.0 也不可用，尝试 ${FALLBACK_VERSION}..."
-
-            if command -v uv &> /dev/null; then
-                uv pip install "playwright==${FALLBACK_VERSION}" 2>&1 | grep -v "^$" || true
-                CHROMIUM_OUTPUT=$(PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_PATH" \
-                    uv run --no-project playwright install chromium 2>&1)
-            else
-                pip install "playwright==${FALLBACK_VERSION}" 2>&1 | grep -v "^$" || true
-                CHROMIUM_OUTPUT=$(PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_PATH" \
-                    playwright install chromium 2>&1)
-            fi
-            CHROMIUM_EXIT_CODE=$?
-        fi
-    fi
-
-    # 重新启用 set -e
-    set -e
-
-    # 显示输出（过滤警告信息）
-    echo "$CHROMIUM_OUTPUT" | grep -v "DeprecationWarning" | grep -v "url.parse" | grep -v "^$" | grep -v "NoSuchKey" | grep -v "xml version" | tail -10 || true
-
-    # 检查 chromium 是否安装成功
-    if [ $CHROMIUM_EXIT_CODE -eq 0 ] || echo "$CHROMIUM_OUTPUT" | grep -q "downloaded to\|is already installed"; then
-        PW_VERSION=$(python -m pip show playwright 2>/dev/null | grep "^Version:" | awk '{print $2}' || echo "unknown")
-        log_info "Chromium 安装成功 ✓ (playwright ${PW_VERSION})"
-        log_info "浏览器安装路径: $BROWSERS_PATH"
-
-        export PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_PATH"
-    else
-        # 尝试带系统依赖重试（解决 slim 镜像缺少 Linux 库的问题）
-        if echo "$CHROMIUM_OUTPUT" | grep -qi "dependencies\|missing\|host"; then
-            log_warn "检测到可能缺少底层系统依赖，尝试自动安装依赖 (playwright install --with-deps)..."
-            if command -v uv &> /dev/null; then
-                PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_PATH" uv run --no-project playwright install --with-deps chromium 2>&1 || true
-            else
-                PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_PATH" playwright install --with-deps chromium 2>&1 || true
-            fi
-        fi
-
-        if [ -d "$BROWSERS_PATH" ] && [ -n "$(find "$BROWSERS_PATH" -maxdepth 2 -name "chromium-*" -type d 2>/dev/null | head -n 1)" ]; then
-            log_info "Chromium 最终安装完成 ✓"
-            export PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_PATH"
-        else
-            log_error "Chromium 安装失败！(退出码: $CHROMIUM_EXIT_CODE)"
-            log_warn "playwright 功能可能不可用"
-            log_warn "错误信息: $(echo "$CHROMIUM_OUTPUT" | grep -i "error\|failed" | tail -3)"
-            log_warn "如需使用 Playwright，可进入容器执行: playwright install --with-deps chromium"
-        fi
-    fi
-}
-
-#######################################
-# 4. 可选依赖处理 (OpenCV / Playwright)
+# 4. 可选依赖处理 (OpenCV)
 #######################################
 handle_optional_dependencies() {
     INSTALL_OPENCV="${INSTALL_OPENCV:-true}"
-    INSTALL_PLAYWRIGHT="${INSTALL_PLAYWRIGHT:-false}"
 
-    # --- 4.1 OpenCV 选装处理 ---
+    # --- OpenCV 选装处理 ---
     if [ "$INSTALL_OPENCV" = "true" ]; then
         log_info "选装组件 [OpenCV]: 已启用"
         if python -c "import cv2" &> /dev/null; then
@@ -380,42 +332,6 @@ handle_optional_dependencies() {
         fi
     else
         log_info "选装组件 [OpenCV]: 未启用 (跳过安装)"
-    fi
-
-    # --- 4.2 Playwright 选装处理 ---
-    if [ "$INSTALL_PLAYWRIGHT" = "true" ]; then
-        log_info "选装组件 [Playwright]: 已启用"
-        if [ -n "$PLAYWRIGHT_VERSION" ]; then
-            # 显式指定版本时的检查与安装
-            if python -c "import playwright; import sys; sys.exit(0 if playwright.__version__ == '${PLAYWRIGHT_VERSION}' else 1)" &> /dev/null; then
-                log_info "Playwright 指定版本已满足 (${PLAYWRIGHT_VERSION}) ✓"
-            else
-                log_info "安装指定版本 playwright==${PLAYWRIGHT_VERSION}..."
-                if command -v uv &> /dev/null; then
-                    uv pip install "playwright==${PLAYWRIGHT_VERSION}" 2>&1 | grep -v "^$" || true
-                else
-                    pip install "playwright==${PLAYWRIGHT_VERSION}" 2>&1 | grep -v "^$" || true
-                fi
-            fi
-        else
-            # 未指定版本（公版环境默认推荐）：已安装则复用，未安装则自动安装适配版本
-            if python -c "import playwright" &> /dev/null; then
-                PW_VERSION=$(python -m pip show playwright 2>/dev/null | grep "^Version:" | awk '{print $2}' || echo "已安装")
-                log_info "Playwright 已就绪 ✓ (${PW_VERSION})"
-            else
-                log_info "正在自动安装最新适配版 playwright..."
-                if command -v uv &> /dev/null; then
-                    uv pip install playwright 2>&1 | grep -v "^$" || true
-                else
-                    pip install playwright 2>&1 | grep -v "^$" || true
-                fi
-            fi
-        fi
-
-        # 检查并安装浏览器
-        check_chromium
-    else
-        log_info "选装组件 [Playwright]: 未启用 (跳过安装浏览器内核与渲染套件，秒级启动)"
     fi
 }
 
@@ -471,16 +387,15 @@ start_application() {
     # 设置环境变量
     export PYTHONUNBUFFERED=1
     export PIP_INDEX_URL="$PIP_INDEX_URL"
+    export PIP_EXTRA_INDEX_URL="$PIP_EXTRA_INDEX_URL"
     export UV_INDEX_URL="$UV_INDEX_URL"
-    export PLAYWRIGHT_DOWNLOAD_HOST="$PLAYWRIGHT_DOWNLOAD_HOST"
+    export UV_EXTRA_INDEX_URL="$UV_EXTRA_INDEX_URL"
     export UV_LINK_MODE=copy
-    
-    # PLAYWRIGHT_BROWSERS_PATH 由 check_chromium 函数设置
     
     # 启动 core 命令
     if command -v uv &> /dev/null; then
         log_info "使用 uv run 启动 core 命令..."
-        exec uv run --no-project core "$@"
+        exec uv run core "$@"
     elif command -v core &> /dev/null; then
         log_info "使用虚拟环境 bin/core 启动..."
         exec core "$@"

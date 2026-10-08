@@ -52,9 +52,7 @@
    - **代码目录**: 填写宿主机上 gsuid_core 的绝对路径 (默认: `/opt/gsuid_core`)
    - **容器名称**: 自定义容器名称 (默认: `gsuid-core`)
    - **WebUI 端口**: WebUI 访问端口 (默认: `8765`)
-   - **时区设置**: 时区配置 (默认: `Asia/Shanghai`)
    - **选装 OpenCV**: 是否安装 OpenCV 图像处理支持 (默认: `true`，自动安装 `opencv-python-headless`)
-   - **选装 Playwright**: 是否安装 Playwright 及 Chromium 浏览器 (默认: `false`，轻量秒启；需卡片截图时开启)
 
 3. **点击安装**: 等待容器启动完成
 
@@ -71,11 +69,9 @@
 | `CODE_DIR` | 代码目录(宿主机绝对路径) | `/opt/gsuid_core` | 需挂载至宿主机的实际代码路径 |
 | `CONTAINER_NAME` | 容器名称 | `gsuid-core` | 保持默认或自定义 |
 | `PANEL_APP_PORT_HTTP` | WebUI 端口 | `8765` | 可自定义未占用端口 |
-| `TZ` | 时区设置 | `Asia/Shanghai` | 推荐 `Asia/Shanghai` |
 | `START_COMMAND` | 启动命令 | `bash /app/bot.sh` | 容器入口启动脚本 |
 | `DOCKER_IMAGE` | Docker 基础镜像 | `python:3.13-slim` | 默认直接使用公版官方 Python 镜像 |
 | `INSTALL_OPENCV` | 选装 OpenCV 依赖 | `true` | `true` (安装 headless 版免系统库) / `false` |
-| `INSTALL_PLAYWRIGHT`| 选装 Playwright 与 Chromium | `false` | `false` (轻量秒启) / `true` (渲染网页和游戏卡片) |
 
 #### 目录挂载
 
@@ -108,14 +104,14 @@ docker-compose logs -f
 
 容器启动时会自动执行 `bot.sh` 脚本,该脚本会:
 
-1. ✅ 检查 Python 环境
-2. ✅ 创建并激活虚拟环境 (`.venv`)
-3. ✅ 安装项目依赖 (从 `pyproject.toml`)
-4. ✅ 检查可选依赖 (opencv、playwright)
-5. ✅ 安装 Chromium 浏览器 (用于截图功能)
-6. ✅ 启动应用
+1. 检查底层系统基础依赖 (git, C 运行库)
+2. 检查 Python 与 uv 环境
+3. 创建并激活虚拟环境 (`.venv`)
+4. 安装与同步项目依赖 (从 `pyproject.toml`)
+5. 检查可选依赖 (OpenCV)
+6. 启动应用
 
-**首次启动可能需要 2-5 分钟**,因为需要下载依赖和浏览器。
+**首次启动可能需要 1-2 分钟**,需要下载依赖。
 
 ### 常见问题
 
@@ -159,20 +155,6 @@ firewall-cmd --reload
    uv sync
    ```
 
-#### 4. Playwright 浏览器安装失败
-
-脚本会自动尝试多个版本的 Playwright,如果都失败:
-
-```bash
-# 进入容器
-docker exec -it gsuid-core bash
-
-# 手动安装浏览器
-source .venv/bin/activate
-PLAYWRIGHT_DOWNLOAD_HOST=https://npmmirror.com/mirrors/playwright/ \
-  playwright install chromium
-```
-
 ### 更新升级
 
 #### 更新代码
@@ -214,10 +196,10 @@ docker-compose up -d --force-recreate
 docker exec -it gsuid-core bash
 
 # 安装插件
-uv run --no-project core install <plugin-name>
+uv run core install <plugin-name>
 
 # 更新插件
-uv run --no-project core update <plugin-name>
+uv run core update <plugin-name>
 ```
 
 ## 相关链接

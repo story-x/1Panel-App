@@ -20,11 +20,10 @@ services:
         hostname: ${CONTAINER_NAME:-gsuid-core}
         environment:
             - PYTHONUNBUFFERED=1
-            - TZ=${TZ}
+            - TZ=Asia/Shanghai
             - APP_NAME=GsCore
             - APP_KEY=gscore
             - INSTALL_OPENCV=${INSTALL_OPENCV:-true}
-            - INSTALL_PLAYWRIGHT=${INSTALL_PLAYWRIGHT:-false}
         working_dir: /app
         # 启动命令
         command: ${START_COMMAND}

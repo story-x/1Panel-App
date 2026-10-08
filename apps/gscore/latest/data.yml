@@ -15,13 +15,6 @@ additionalProperties:
       required: true
       type: number
       rule: paramPort
-    - default: 'Asia/Shanghai'
-      edit: true
-      envKey: TZ
-      labelEn: Timezone
-      labelZh: 时区设置
-      required: true
-      type: text
     - default: 'bash /app/bot.sh'
       edit: true
       envKey: START_COMMAND
@@ -40,16 +33,4 @@ additionalProperties:
         - label: 是 (安装 opencv-python-headless)
           value: 'true'
         - label: 否 (跳过安装)
-          value: 'false'
-    - default: 'false'
-      edit: true
-      envKey: INSTALL_PLAYWRIGHT
-      labelEn: Install Playwright & Chromium
-      labelZh: 选装 Playwright 及浏览器 (网页/卡片渲染)
-      required: true
-      type: select
-      values:
-        - label: 是 (安装 Playwright + Chromium)
-          value: 'true'
-        - label: 否 (跳过，轻量秒启)
           value: 'false'
