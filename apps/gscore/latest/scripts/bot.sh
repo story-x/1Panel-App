@@ -8,11 +8,12 @@
 
 set -e  # 遇到错误立即退出
 
-# 国内多镜像源定义（默认阿里云，备选字节跳动火山引擎源、清华源）
+# 国内多镜像源定义（默认阿里云，备选字节跳动火山引擎源、腾讯云源）
 export PIP_INDEX_URL="${PIP_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}"
-export PIP_EXTRA_INDEX_URL="${PIP_EXTRA_INDEX_URL:-https://mirrors.volces.com/pypi/simple/ https://pypi.tuna.tsinghua.edu.cn/simple/}"
+export PIP_EXTRA_INDEX_URL="${PIP_EXTRA_INDEX_URL:-https://mirrors.volces.com/pypi/simple/ https://mirrors.cloud.tencent.com/pypi/simple/}"
 export UV_INDEX_URL="${UV_INDEX_URL:-$PIP_INDEX_URL}"
 export UV_EXTRA_INDEX_URL="${UV_EXTRA_INDEX_URL:-$PIP_EXTRA_INDEX_URL}"
+export UV_INDEX_STRATEGY="${UV_INDEX_STRATEGY:-unsafe-best-match}"
 
 # 颜色定义
 RED='\033[0;31m'
@@ -166,26 +167,27 @@ check_environment() {
     PYTHON_VERSION=$(python --version 2>&1 | awk '{print $2}')
     log_info "Python 版本: ${PYTHON_VERSION}"
 
-    # 动态检测与配置 PyPI / uv 镜像源 (阿里源 -> 字节跳动火山引擎源 -> 清华源)
+    # 动态检测与配置 PyPI / uv 镜像源 (阿里源 -> 字节跳动火山引擎源 -> 腾讯云源)
     local aliyun_pypi="https://mirrors.aliyun.com/pypi/simple/"
     local bytedance_pypi="https://mirrors.volces.com/pypi/simple/"
-    local tsinghua_pypi="https://pypi.tuna.tsinghua.edu.cn/simple/"
+    local tencent_pypi="https://mirrors.cloud.tencent.com/pypi/simple/"
 
     if python -c "import urllib.request; urllib.request.urlopen('$aliyun_pypi', timeout=2)" &>/dev/null; then
         export PIP_INDEX_URL="$aliyun_pypi"
-        export PIP_EXTRA_INDEX_URL="$bytedance_pypi $tsinghua_pypi"
-        log_info "PyPI/uv 镜像源: 优先使用 [阿里源] (备选: 字节跳动火山引擎源、清华源)"
+        export PIP_EXTRA_INDEX_URL="$bytedance_pypi $tencent_pypi"
+        log_info "PyPI/uv 镜像源: 优先使用 [阿里源] (备选: 字节跳动火山引擎源、腾讯云源)"
     elif python -c "import urllib.request; urllib.request.urlopen('$bytedance_pypi', timeout=2)" &>/dev/null; then
         export PIP_INDEX_URL="$bytedance_pypi"
-        export PIP_EXTRA_INDEX_URL="$aliyun_pypi $tsinghua_pypi"
+        export PIP_EXTRA_INDEX_URL="$aliyun_pypi $tencent_pypi"
         log_warn "阿里 PyPI 源无响应，已自动切换至 [字节跳动 (火山引擎) 源] 作为主源"
     else
-        export PIP_INDEX_URL="$tsinghua_pypi"
+        export PIP_INDEX_URL="$tencent_pypi"
         export PIP_EXTRA_INDEX_URL="$bytedance_pypi $aliyun_pypi"
-        log_warn "阿里与字节 PyPI 源均不可用，已自动切换至 [清华源] 作为主源"
+        log_warn "阿里与字节 PyPI 源均不可用，已自动切换至 [腾讯云源] 作为主源"
     fi
     export UV_INDEX_URL="$PIP_INDEX_URL"
     export UV_EXTRA_INDEX_URL="$PIP_EXTRA_INDEX_URL"
+    export UV_INDEX_STRATEGY="unsafe-best-match"
     
     # 检查 pip
     if ! python -m pip --version &> /dev/null; then
@@ -201,7 +203,7 @@ check_environment() {
         log_info "当前环境未找到 uv，尝试自动安装 uv..."
         python -m pip install uv -i "$PIP_INDEX_URL" 2>&1 | grep -v "^$" || \
         python -m pip install uv -i "https://mirrors.volces.com/pypi/simple/" --trusted-host mirrors.volces.com 2>&1 | grep -v "^$" || \
-        python -m pip install uv -i "https://pypi.tuna.tsinghua.edu.cn/simple/" --trusted-host pypi.tuna.tsinghua.edu.cn 2>&1 | grep -v "^$" || \
+        python -m pip install uv -i "https://mirrors.cloud.tencent.com/pypi/simple/" --trusted-host mirrors.cloud.tencent.com 2>&1 | grep -v "^$" || \
         python -m pip install uv 2>&1 | grep -v "^$" || true
         if command -v uv &> /dev/null; then
             UV_VERSION=$(uv --version 2>&1 | awk '{print $2}')
@@ -277,13 +279,13 @@ sync_project_dependencies() {
 
     if [ $need_sync -eq 1 ]; then
         if [ -f "pyproject.toml" ]; then
-            log_info "检测到 pyproject.toml，使用 uv sync 进行项目依赖同步..."
+            log_info "检测到 pyproject.toml，使用 uv sync (--python 3.13) 进行项目依赖同步..."
             if command -v uv &> /dev/null; then
-                uv sync 2>&1 | grep -v "DeprecationWarning" || {
+                uv sync --python 3.13 2>&1 | grep -v "DeprecationWarning" || {
                     log_warn "uv sync 失败，尝试执行 uv pip install -e . ..."
                     uv pip install -e .
                 }
-                uv run python -m ensurepip 2>/dev/null || true
+                uv run --no-sync python -m ensurepip 2>/dev/null || true
             else
                 pip install -e .
             fi
@@ -390,12 +392,13 @@ start_application() {
     export PIP_EXTRA_INDEX_URL="$PIP_EXTRA_INDEX_URL"
     export UV_INDEX_URL="$UV_INDEX_URL"
     export UV_EXTRA_INDEX_URL="$UV_EXTRA_INDEX_URL"
+    export UV_INDEX_STRATEGY="unsafe-best-match"
     export UV_LINK_MODE=copy
     
     # 启动 core 命令
     if command -v uv &> /dev/null; then
-        log_info "使用 uv run 启动 core 命令..."
-        exec uv run core "$@"
+        log_info "使用 uv run (--no-sync) 启动 core 命令..."
+        exec uv run --no-sync core "$@"
     elif command -v core &> /dev/null; then
         log_info "使用虚拟环境 bin/core 启动..."
         exec core "$@"
